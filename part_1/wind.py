@@ -41,6 +41,7 @@ and alpha_rw are the relative wind speed and angle in the BODY frame.
 """
 from pathlib import Path
 from typing import Dict, Tuple
+from simulation.utils import ned_to_body_xy
 import numpy as np
 
 _WIND_COEFF_FILE = Path(__file__).resolve().parent.parent / "data" / "wind_coeff.csv"
@@ -59,7 +60,6 @@ def load_wind_coefficients() -> Tuple[np.ndarray, np.ndarray]:
     """
     table = np.loadtxt(_WIND_COEFF_FILE, delimiter=",", skiprows=1)
     return table[:, 0], table[:, 1:]
-
 
 class Wind:
     """Template for student wind model.
@@ -93,6 +93,15 @@ class Wind:
         self.tau_slow = float(tau_slow)
         self.seed = seed
 
+        # Load wind coefficient table.
+        self.alpha_deg, self.C6 = load_wind_coefficients()
+        self.rng = np.random.default_rng(seed)
+        self.U_slow = self.rng.normal(0, self.sigma_slow)
+
+    def wind_coeffs(self, alpha_rw_deg: float) -> np.ndarray: # Interpolate wind coefficients.
+        a = np.mod(alpha_rw_deg, 360.0)
+        return np.array([np.interp(a, self.alpha_deg, self.C6[:, i], period=360.0) for i in range(6)])
+
     def step(
         self,
         t: float,
@@ -102,6 +111,26 @@ class Wind:
     ) -> Tuple[np.ndarray, Dict[str, float]]:
         # TODO: Replace this placeholder with your wind load model.
         # Default: no wind loads.
-        tau_w6 = np.zeros(6)
-        info = {"U": 0.0, "beta_ned": 0.0, "alpha_body": 0.0}
+
+        U_wind = self.mean_speed + self.U_slow
+        # Update slow-varying component
+        a = np.exp(-dt / self.tau_slow)
+        b = self.sigma_slow**2 * (1 - a**2)
+        self.U_slow = a * self.U_slow + self.rng.normal(0, np.sqrt(b))
+
+        if self.semantics == "from":
+            beta = (self.beta + np.pi) % (2 * np.pi)  # Convert to "towards" convention
+        else:
+            beta = self.beta
+
+        V_rw_b = ned_to_body_xy(np.array([U_wind * np.cos(beta), U_wind * np.sin(beta)]), eta[5]) - np.array([nu[0], nu[1]])
+
+        U_rw = np.sqrt(V_rw_b[0]**2 + V_rw_b[1]**2)
+
+        alpha_rw_deg = np.degrees(np.arctan2(V_rw_b[1], V_rw_b[0]))
+
+        wind_coeffs = self.wind_coeffs(alpha_rw_deg)
+
+        tau_w6 = U_rw**2 * wind_coeffs
+        info = {"U": U_wind, "beta_ned": beta, "alpha_body": alpha_rw_deg}
         return tau_w6, info
