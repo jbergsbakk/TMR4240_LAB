@@ -63,8 +63,26 @@ class ReferenceModel:
     def step(
         self, t: float, dt: float, eta_cmd: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        # TODO: Replace this pass-through placeholder with your reference model.
-        self.eta_ref = np.asarray(eta_cmd, dtype=float).reshape(6).copy()
-        self.nu_ref = np.zeros(6)
-        self.acc_ref = np.zeros(6)
-        return self.eta_ref, self.nu_ref, self.acc_ref
+
+        eta_cmd = np.asarray(eta_cmd, dtype=float).reshape(6)
+        psi_diff = eta_cmd[5] - self.eta_ref[5]
+        psi_diff = (psi_diff + np.pi) % (2.0 * np.pi) - np.pi
+        psi_target = self.eta_ref[5] + psi_diff
+
+        for i, cfg in ((0, self.cfg_xy), (1, self.cfg_xy), (5, self.cfg_psi)):
+            target = psi_target if i == 5 else eta_cmd[i]
+            wn, zeta = cfg.wn, cfg.zeta
+
+            acc = wn**2 * (target - self.eta_ref[i]) - 2.0 * zeta * wn * self.nu_ref[i] #The second-order low-pass filter
+
+
+            vel = self.nu_ref[i] + dt * acc  
+            if cfg.rate_limit is not None:
+                vel = float(np.clip(vel, -cfg.rate_limit, cfg.rate_limit))
+            pos = self.eta_ref[i] + dt * vel
+
+            self.eta_ref[i] = pos
+            self.nu_ref[i] = vel
+            self.acc_ref[i] = acc
+
+        return self.eta_ref.copy(), self.nu_ref.copy(), self.acc_ref.copy()
