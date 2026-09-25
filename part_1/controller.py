@@ -1,10 +1,16 @@
 """
 DP controller: PID (surge, sway, yaw) with acceleration feedforward,
-computed in BODY frame, with back-calculation anti-windup.
+computed in BODY frame, with anti-windup.
 
-Interface: compute(t, dt, eta, nu, eta_ref, nu_ref, acc_ref) -> tau_d (6,).
-Optional: reset(), apply_external_aw(tau_applied, psi, dt). Logged:
-last_pid_body {"P","I","D"}, int_ned (2,), int_psi (float).
+Interface: 
+    compute(t, dt, eta, nu, eta_ref, nu_ref, acc_ref) -> tau_d (6,).
+    reset()
+    apply_external_aw(tau_applied, psi, dt). 
+
+Logged:
+    last_pid_body {"P","I","D"}
+    int_ned (2,)
+    int_psi (float).
 
 Control law (BODY frame):
     tau_d = Kp*e_body + Ki*i_body + Kd*e_dot_body + M3 @ acc_ref_body
@@ -18,9 +24,8 @@ Control law (BODY frame):
 - FF:         acceleration feedforward using the FULL M3 (keeps the
               sway<->yaw added-mass coupling, not just its diagonal).
 
-6-DOF<->3-DOF conversion and the BODY<->NED xy rotations are delegated
-to simulation.utils (to_3dof/to_6dof, ned_to_body_xy/body_to_ned_xy)
-rather than reimplemented here.
+6-DOF<->3-DOF conversion and the BODY<->NED xy rotations are handled
+by simulation.utils (to_3dof/to_6dof, ned_to_body_xy/body_to_ned_xy).
 
 Plant model (plant_model.ipynb Sec. 6): M3 = M_RB + M_A (full 3x3),
 D3 = D_l (diagonal; not used in the control law, only for tuning
@@ -31,12 +36,11 @@ Anti-windup (Sec 6.3): d(int)/dt = e + Kaw*(tau_applied - tau_unsat),
 rotated back into the NED/heading frame the integrators live in.
 
 Constructor contract: check.py, pytest, and the notebook build
-DPController() with NO arguments -- final tuned values must be these
+DPController() with NO arguments, final tuned values must be these
 defaults, not just overrides in run_case_part1.py.
 """
 
 import numpy as np
- 
 from simulation.utils import wrap_angle_pi, ned_to_body_xy, body_to_ned_xy, to_3dof, to_6dof
  
 # --- Control plant model, plant_model.ipynb Sec. 6 ---------------------
@@ -79,6 +83,10 @@ class DPController:
         Ti=np.array([100.0, 100.0, 100.0]),
         Tt_pos=20.0,
         Tt_psi=20.0,
+
+        # I_limit: cap on the INTEGRAL term's contribution to tau_d (N, N, Nm) --
+        # NOT the raw error integral. Set to 25% of each axis's thruster budget
+        # The 25% split is a placeholder
         I_limit=np.array([40_000.0, 48_000.0, 120_000.0]),
     ):
         self.Kp, self.Kd, self.Ki = _design_gains(
@@ -88,7 +96,7 @@ class DPController:
         )
         Tt = np.array([Tt_pos, Tt_pos, Tt_psi])
         self.Kaw = 1.0 / (Tt * self.Ki)
-        self.M = M3  # full matrix, used as-is for feedforward
+        self.M = M3  # full matrix, used for feedforward
         self.I_limit = np.asarray(I_limit, dtype=float)
         self._raw_int_safety = 1.0e6
  
