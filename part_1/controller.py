@@ -76,7 +76,7 @@ class DPController:
         *,
         # --- Frequency-domain design point (project text, Sec 6.2) ---
         # wc: closed-loop bandwidth [rad/s] per axis [surge, sway, yaw].
-        wc=np.array([0.07, 0.07, 0.05]),
+        wc=np.array([0.07, 0.07, 0.08]),
         # zeta_c: desired damping ratio per axis. 1.0 = critically damped,
         zeta_c=np.array([1.0, 1.0, 1.0]),
         # Ti: integral time constant [s] per axis (Ki = Kp / Ti). Long Ti

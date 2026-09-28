@@ -48,7 +48,9 @@ def main():
     # The 3-DOF model uses N = eta_cmd[0], E = eta_cmd[1], psi = eta_cmd[5];
     # leave the other components zero.
     # Constant setpoint example:
-    eta_cmd = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    eta_cmd = np.array([60.0, 40.0, 0.0, 0.0, 0.0, 10.0])
+    # Kristian: Satte variablene over til vilkårlige verdier for å teste/
+    # tune controlleren.
 
     # Students may replace eta_cmd with a time series of shape (N_steps, 6).
 
