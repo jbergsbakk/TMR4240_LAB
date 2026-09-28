@@ -134,7 +134,7 @@ class DPController:
         e_pos_ned = eta_ref3[:2] - eta3[:2]
         e_psi = wrap_angle_pi(eta_ref3[2] - psi)
  
-        # --- Velocity error, formed in BODY ---
+        # --- Velocity error, rotated into BODY ---
         nu_ref_body_xy = ned_to_body_xy(nu_ref3[:2], psi)
         e_dot_body = np.array([nu_ref_body_xy[0], nu_ref_body_xy[1], nu_ref3[2]]) - nu3
  
@@ -142,7 +142,7 @@ class DPController:
         acc_ref_body_xy = ned_to_body_xy(acc_ref3[:2], psi)
         acc_ref_body = np.array([acc_ref_body_xy[0], acc_ref_body_xy[1], acc_ref3[2]])
  
-        # --- Integrator update (NED/heading frame; safety bound only) ---
+        # --- Integrator update (NED frame, safety bound only) ---
         self.int_ned = np.clip(
             self.int_ned + e_pos_ned * dt, -self._raw_int_safety, self._raw_int_safety
         )
