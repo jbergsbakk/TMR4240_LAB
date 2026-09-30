@@ -127,10 +127,11 @@ class Wind:
 
         U_rw = np.sqrt(V_rw_b[0]**2 + V_rw_b[1]**2)
 
-        alpha_rw_deg = np.degrees(np.arctan2(V_rw_b[1], V_rw_b[0]))
+        alpha_rw = np.arctan2(V_rw_b[1], V_rw_b[0])
+        alpha_rw_deg = np.degrees(alpha_rw)
 
         wind_coeffs = self.wind_coeffs(alpha_rw_deg)
 
         tau_w6 = U_rw**2 * wind_coeffs
-        info = {"U": U_wind, "beta_ned": beta, "alpha_body": alpha_rw_deg}
+        info = {"U": U_wind, "beta_ned": beta, "alpha_body": alpha_rw}
         return tau_w6, info
