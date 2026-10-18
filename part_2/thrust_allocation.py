@@ -54,7 +54,7 @@ class ThrustAllocator:
 
     def __init__(self, thrusters: List[ThrusterConfig]):
         self.thrusters = thrusters
-
+   
     def allocate(
         self,
         t: float,
@@ -65,9 +65,63 @@ class ThrustAllocator:
     ) -> Tuple[np.ndarray, np.ndarray]:
         n = len(self.thrusters)
 
-        # TODO: Replace this placeholder with your thrust allocation algorithm.
-        # The placeholder commands zero thrust and alpha for all thrusters.
+        #Extracting 3-DOF commanded wrench [Fx, Fy, Mz]
+        tau_c = np.asarray(tau_d, dtype=float)[[0,1,5]]
+
+        #Extended configuration matrix Be, bult from the thruster geometry.
+        #Tunnel: one column
+        #Azimuth: Two columns
+        cols = []
+        ext_idx = []
+        w = []
+        for th in self.thrusters:
+            if th.kind == "tunnel":
+                c = np.cos(th.alpha0)
+                s = np.sin(th.alpha0)
+                cols.append([c,s,th.x*s-th.y*c])
+                ext_idx.append([len(cols) - 1])
+                w += [1.0/th.u_max**2]
+            else:
+                cols.append([1.0, 0.0, -th.y])
+                cols.append([0.0, 1.0, th.x])
+                ext_idx.append([len(cols) -2, len(cols)-1])
+                w += [1.0/th.u_max**2]*2
+
+        Be = np.array(cols).T
+
+        #Weighted pseudo-inverse, w = diag(1/u_max^2)
+        W_inv = np.diag(1.0/np.array(w))
+        f_e = np.matmul(np.matmul(W_inv, Be.T), np.linalg.solve(np.matmul(np.matmul(Be, W_inv), Be.T), tau_c)) 
+
+        # Scaling the whole solution by one factor
+        u_max = np.array([th.u_max for th in self.thrusters])
+        u_mag = np.array([np.linalg.norm(f_e[idx]) for idx in ext_idx])
+        ratio = np.max(u_mag/u_max)
+        if ratio > 1.0:
+            f_e = f_e/ratio
+
+        #mapping extendeed forces back to (u, alpha)
         u_cmd = np.zeros(n)
-        alpha_cmd = np.zeros(n)
+        alpha_cmd=np.zeros(n)
+        for i, (th, idx) in enumerate(zip(self.thrusters, ext_idx)):
+            if th.kind == "tunnel":
+                u_cmd[i] = f_e[idx[0]]
+                alpha_cmd[i] = th .alpha0
+                continue
+            fx, fy = f_e[idx]
+            u= np.hypot(fx,fy)
+            a = np.arctan2(fy, fx)
+
+            # (u, a) and (-u, a + pi) will give the same force. We will pick the one that gives the least rotation
+            if alpha_now is not None:
+                d1 = (a - alpha_now[i] + np.pi) %(2*np.pi)- np.pi
+                d2 = (a+np.pi - alpha_now[i] + np.pi) % (2*np.pi) - np.pi
+                if abs(d2) < abs(d1):
+                    u = -u
+                    d1 = d2
+                a = alpha_now[i] +d1
+            u_cmd[i] = u
+            alpha_cmd[i] = a
 
         return u_cmd, alpha_cmd
+
