@@ -109,9 +109,8 @@ class KalmanFilterObserver(Observer):
             # Tunable parameters (can be changed to 1x3 tuples)
             omega_p = 2.0 * np.pi / 8.0, # Bytt 8.0 med peak perioden fra bølgemodel/klass typ: "sim.waves.tp" hvis mulig
             lam = 0.1, # Øk for å filtrere et bredere bånd
-            kw_sigma = np.array([2.0, 2.0, 0.5]), # Økning betyr større bølgebevegelse i korresponderende DOF
+            kw_sigma = np.array([7.0, 7.0, 0.4]), # Økning betyr større bølgebevegelse i korresponderende DOF
             tb = 1000.0, # Tidskonstant for bias
-            kb = np.array([1.0, 1.0, 1.0]), # Tune siste 3 diag-elementer i Q isteden
 
             *args,
             **kwargs
@@ -120,7 +119,7 @@ class KalmanFilterObserver(Observer):
         # WF model
         Omega = omega_p * np.eye(3)
         Lambda = lam * np.eye(3)
-        Kw = np.diag(omega_p * lam * kw_sigma)
+        Kw = np.diag(2 * omega_p * lam * kw_sigma)
 
         # WF state-space matrices
         self.Aw = np.block([[np.zeros((3, 3)), np.eye(3)], [- Omega @ Omega, - 2 * Lambda @ Omega]])
@@ -128,6 +127,7 @@ class KalmanFilterObserver(Observer):
         self.Ew = np.vstack([np.zeros((3, 3)), Kw])
 
         # Bias model
+        kb = np.array([1.0, 1.0, 1.0])
         Tb = tb * np.eye(3)
         self.Tb_inv = np.linalg.inv(Tb)
         self.Eb = np.diag(kb)
@@ -145,8 +145,8 @@ class KalmanFilterObserver(Observer):
 
         self.H = np.hstack([self.Cw, np.eye(3), np.zeros((3, 3)), np.zeros((3, 3))])
 
-        self.Q = np.diag([1.0]*3 + [1e2, 1e2, 1e6])
-        self.R = np.diag(np.array([0.02, 0.02, 0.0034])**2)
+        self.Q = np.diag([1.0]*3 + [1e4, 1e3, 1e7])
+        self.R = np.diag(np.array([0.2, 0.2, 0.0034])**2)
         self.P0 = np.diag([1.0]*6 + [0.1**2]*3 + [1e5**2, 1e5**2, 1e7**2] + [0.1**2]*3)
 
         self.reset()
@@ -218,16 +218,16 @@ class KalmanFilterObserver(Observer):
         eta_measured_3DOF = np.asarray(eta_measured, dtype=float).reshape(6)[[0, 1, 5]]
         tau_est_3DOF = np.asarray(tau_est, dtype=float).reshape(6)[[0, 1, 5]]
 
-        # Predict
-        self.P_bar = self.predict_covariance(dt, self.P_hat, self.x_hat)
-        self.x_bar = self.predict_state(dt, self.x_hat, tau_est_3DOF)
-        self.x_bar[8] = wrap_angle_pi(self.x_bar[8])
-
         # Correct
         self.K = self.update_kf_gain()
         self.P_hat = self.update_covariance()
         self.x_hat = self.update_state_estimate(eta_measured_3DOF)
         self.x_hat[8] = wrap_angle_pi(self.x_hat[8])
+
+        # Predict
+        self.P_bar = self.predict_covariance(dt, self.P_hat, self.x_hat)
+        self.x_bar = self.predict_state(dt, self.x_hat, tau_est_3DOF)
+        self.x_bar[8] = wrap_angle_pi(self.x_bar[8])
 
         eta = np.zeros(6)
         eta[[0, 1, 5]] = self.x_hat[6:9]
