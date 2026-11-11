@@ -68,7 +68,7 @@ def plot_xy(logs, figsize=(6, 6)):
     # commanded setpoints (logs.cmd), not the smoothed reference (logs.sp) —
     # with a real reference model sp traces the whole path
     sp = np.unique(logs.cmd[:, [1, 0]], axis=0)
-    ax.plot(sp[:, 0], sp[:, 1], "x", ms=10, label="setpoint")
+    ax.plot(sp[:, 0], sp[:, 1], "x", ms=1, label="setpoint")
     ax.set_xlabel("East [m]")
     ax.set_ylabel("North [m]")
     ax.set_aspect("equal", adjustable="datalim")
@@ -163,7 +163,7 @@ def plot_dashboard(logs, figsize=(13, 8)):
     ax.plot(logs.eta[:, 1], logs.eta[:, 0])
     ax.plot(logs.eta[0, 1], logs.eta[0, 0], "o")
     sp = np.unique(logs.cmd[:, [1, 0]], axis=0)   # commanded, not reference
-    ax.plot(sp[:, 0], sp[:, 1], "x", ms=10)
+    ax.plot(sp[:, 0], sp[:, 1], "x", ms=1)
     ax.set_xlabel("East [m]"); ax.set_ylabel("North [m]")
     ax.set_aspect("equal", adjustable="datalim")
     ax.set_title("Trajectory")
