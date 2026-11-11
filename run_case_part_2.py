@@ -44,6 +44,7 @@ from simulation.capability import capability_sweep, plot_capability
 from simulation.plotter import (plot_current, plot_dashboard, plot_time_histories,
                                 plot_wrench, plot_xy)
 from simulation.simulation_part_2 import DPSimulatorPart2
+from simulation.utils import wrap_angle_pi
 
 # Some presets deliberately open more figures than matplotlib's default
 # 20-figure warning threshold: Part 2, Simulation 4 alone plots both observers
@@ -71,7 +72,7 @@ SEED = 123
 # there first, then set this to "nonlinear_passive" or "kalman" and justify
 # the choice in the report.  It is None until you choose: every preset that
 # needs it stops with a message instead of picking one for you.
-SELECTED_OBSERVER = "kalman"
+SELECTED_OBSERVER = "nonlinear_passive"
 
 # Initial observer error used by the convergence demonstration in Part 2,
 # Simulation 4.  The engine resets every observer at the TRUE initial pose, so
@@ -320,13 +321,113 @@ def sim6():
     return logs
 
 
+def sim7_trajectory_commands(cfg: Part2SimConfig, pose_of_t: function) -> np.ndarray:
+    """Set-point sequence to showcase advanced DP capabilities. """
+    n_steps = int(round(cfg.T / cfg.dt)) + 1
+    eta_cmd = np.zeros((n_steps, 6))
+    for i in range(n_steps):
+        eta_cmd[i, 0], eta_cmd[i, 1], eta_cmd[i, 5] = pose_of_t(i * cfg.dt)
+    return eta_cmd
+
+def figure_8(half_length, half_width, period, t, constant_heading=True, psi_const=0.0):
+    w = 2 * np.pi / period
+    th = w * t
+    N =half_length * np.sin(th)
+    E = half_width * np.sin(2 * th)
+    if constant_heading:
+        psi = psi_const
+    else:
+        dN = half_length * w * np.cos(th)
+        dE = 2 * half_width * w * np.cos(2 * th)
+        psi = np.arctan2(dE, dN)
+    if t > period:
+        N = 0.0
+        E = 0.0
+        psi = 0.0
+
+    return np.array([N, E, psi])
+
+def slalom(speed=0.2, amplitude=15.0, period=200.0, constant_heading=True, psi_const=0.0):
+    """Sine-wave slalom: constant speed north, side to side in East with the given
+    amplitude [m] and period [s]."""
+    w = 2 * np.pi / period
+
+    def pose_of_t(t):
+        N, E = speed * t, amplitude * np.sin(w * t)
+        psi = psi_const if constant_heading else np.arctan2(amplitude * w * np.cos(w * t), speed)
+        return N, E, psi
+
+    return pose_of_t
+
+def racetrack(straight=60.0, radius=20.0, period=200.0,speed=0.3, constant_heading=True, psi_const=0.0):
+
+
+    """Racetrack (two straights, two half-circles) at constant speed, repeating.
+    Starts at the origin heading north, then turns clockwise (to the east).
+    Lap length = 2*straight + 2*pi*radius, e.g. 246 m (about 820 s at 0.3 m/s)."""
+    perim = 2 * straight + 2 * np.pi * radius
+    arc = np.pi * radius
+
+    def pose_of_t(t):
+        s = (speed * t) % perim                       # distance travelled along the lap
+        if s < straight:                              # straight north
+            N, E, phi = s, 0.0, 0.0
+        elif s < straight + arc:                      # half-circle: north -> south via east
+            phi = (s - straight) / radius
+            N, E = straight + radius * np.sin(phi), radius - radius * np.cos(phi)
+        elif s < 2 * straight + arc:                  # straight south
+            N, E, phi = straight - (s - straight - arc), 2 * radius, np.pi
+        else:                                         # half-circle: south -> north via west
+            phi = np.pi + (s - 2 * straight - arc) / radius
+            N, E = radius * np.sin(phi), radius - radius * np.cos(phi)
+        if t > period:
+            N, E, phi = 0.0, 0.0, 0.0
+        return N, E, (psi_const if constant_heading else wrap_angle_pi(phi))
+
+    return pose_of_t
+
+def pentagram(radius=30.0, speed=0.3, dwell=0.0, constant_heading=True, psi_const=0.0):
+    """Five-pointed star traced at constant speed along straight legs, repeating.
+
+    The first point is at the origin and the star lies south of it.  Every
+    corner turns the path by 144 deg.  ``dwell`` [s] holds the vessel at each
+    point; with the heading following the path, it turns to the next leg
+    there before moving on.  Leg length = 1.902 * radius (57 m for 30 m).
+    """
+    ang = np.deg2rad(72.0 * np.arange(5))
+    pts = np.column_stack([radius * np.cos(ang), radius * np.sin(ang)])   # [N, E]
+    pts -= pts[0]                                  # first point at the origin
+    order = [0, 2, 4, 1, 3]                        # skip one point each leg -> star
+    starts = pts[order]
+    legs = pts[order[1:] + order[:1]] - starts
+    t_move = np.hypot(legs[:, 0], legs[:, 1]) / speed
+    heading = np.arctan2(legs[:, 1], legs[:, 0])   # direction of each leg
+    t_end = np.cumsum(dwell + t_move)              # time at which each leg ends
+    lap = t_end[-1]
+
+    def pose_of_t(t):
+        tl = t % lap
+        i = min(int(np.searchsorted(t_end, tl, side="right")), 4)
+        tau = tl - (t_end[i - 1] if i > 0 else 0.0)          # time into leg i
+        frac = 0.0 if tau < dwell else (tau - dwell) / t_move[i]
+        N, E = starts[i] + frac * legs[i]
+        return N, E, (psi_const if constant_heading else heading[i])
+
+    return pose_of_t
+
 def sim7():
-    """Part 2, Simulation 7 — your own showcase.  Design it, explain it, discuss it."""
-    # TODO (students): replace this with your own scenario.
-    cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=True, observer_type=selected_observer())
-    logs = run(cfg, np.zeros(6), environment())
-    standard_plots(logs, observer=True)
-    return logs
+    Duration = 1000.0
+    cfg = Part2SimConfig(dt=DT, T=Duration, use_observer=True, observer_type=selected_observer())
+
+    logs1 = run(cfg, sim7_trajectory_commands(cfg, racetrack(straight=60.0, radius=20.0, speed=0.3, period=Duration, constant_heading=True)), environment(current=False, wind=False, waves=False))
+    logs2 = run(cfg, sim7_trajectory_commands(cfg, racetrack(straight=60.0, radius=20.0, speed=0.3, period=Duration, constant_heading=True)), environment())
+    logs3 = run(cfg, sim7_trajectory_commands(cfg, racetrack(straight=60.0, radius=20.0, speed=0.3, period=Duration, constant_heading=False)), environment(current=False, wind=False, waves=False))
+    logs4 = run(cfg, sim7_trajectory_commands(cfg, racetrack(straight=60.0, radius=20.0, speed=0.3, period=Duration, constant_heading=False)), environment())
+
+
+    for _ in (logs1, logs2, logs3, logs4):
+        standard_plots(_, setpoints=True, observer=True, environment_plots=False)
+    return logs1, logs2, logs3, logs4
 
 
 def bonus_sensor_noise():
