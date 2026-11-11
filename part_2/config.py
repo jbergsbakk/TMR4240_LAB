@@ -78,7 +78,7 @@ class Part2SimConfig:
     bypass_actuators: bool = False
     observer_kwargs: Dict[str, Any] = field(default_factory=dict)
 
-dataclass
+@dataclass
 class ControllerConfig:
     """
     DP controller tuning (see part_2/controller.py).
