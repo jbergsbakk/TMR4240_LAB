@@ -194,12 +194,41 @@ def sim1():
     wave loads you built."""
     cfg = Part2SimConfig(dt=DT, T=300.0, use_controller=False, use_reference=False)
     logs = run(cfg, np.zeros(6), environment())
+
+
+    # Checking if al wave loads are finite
+    tau_wave = logs.tau_wave
+
+    if np.isfinite(tau_wave).all():
+        print("All wave loads are finite.")
+    else:
+        print("Not all wave loads are finite.")
+    #Done
+
     plot_time_histories(logs)
     plot_xy(logs)
     plot_wind_field(logs)
     plot_current(logs)
     plot_waves(logs)
     return logs
+
+
+#Checking if wave components look realistic directional
+def wave_direction_check():
+    directions =[0, 90,  180, 270] #N,E,S,W
+    eta =np.zeros(6)
+
+    for direction in directions:
+        waves = Waves(hs=WAVES_HS, tp= WAVES_TP,
+                      direction=np.deg2rad(direction), seed=SEED)
+
+        loads =np.array([waves(t, eta) for t in np.arange(0, 300, DT)])
+
+        rms =np.sqrt(np.mean(loads[:, [0 , 1, 5]]**2, axis=0))
+
+        print(f"Direction {direction}°: Fx={rms[0]:.2f}, "
+              f"Fy={rms[1]:.2f}, Mz={rms[2]:.2f}" )
+#Ferdig
 
 
 def sim2():
@@ -325,7 +354,7 @@ def sim7():
     # TODO (students): replace this with your own scenario.
     cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=True, observer_type=selected_observer())
     logs = run(cfg, np.zeros(6), environment())
-    standard_plots(logs, observer=True)
+    standard_plots(logs, observer=True) 
     return logs
 
 
@@ -355,7 +384,9 @@ def bonus_sensor_noise():
 
 
 SCENARIOS = {"sim1": sim1, "sim2": sim2, "sim3": sim3, "sim4": sim4,
-             "sim5": sim5, "sim6": sim6, "sim7": sim7, "bonus": bonus_sensor_noise}
+             "sim5": sim5, "sim6": sim6, "sim7": sim7, "bonus": bonus_sensor_noise,
+             "wave_direction_check": wave_direction_check}
+             #Added wave direction check
 
 
 def main(argv=None):
